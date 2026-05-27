@@ -2,6 +2,8 @@
 
 This guide explains how to embed Tipalti payee onboarding in a WordPress page that is heavily cached and visited by users who are **not logged in**.
 
+It is written for production setups where a CDN or reverse proxy serves cached HTML to anonymous traffic.
+
 ## Why this scenario is tricky
 
 When a WordPress page is cached at the edge/CDN level, full-page HTML can be served identically to all anonymous users. That breaks any integration that needs **user-specific values** (for example, an onboarding token, session key, or payee identity) rendered directly into cached HTML.
@@ -57,6 +59,35 @@ Recommended behavior:
 
 ---
 
+
+### Minimal bootstrap example
+
+```html
+<script>
+  document.addEventListener("DOMContentLoaded", async () => {
+    const mount = document.getElementById("tipalti-onboarding");
+    if (!mount) return;
+
+    try {
+      const res = await fetch("/wp-json/your-namespace/v1/onboarding-context", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include"
+      });
+
+      if (!res.ok) throw new Error(`Context fetch failed: ${res.status}`);
+      const payload = await res.json();
+
+      // Call your Tipalti iFrame initializer here using payload fields
+      mount.textContent = "Onboarding loaded";
+    } catch (err) {
+      mount.innerHTML = "Unable to load onboarding right now. Please retry.";
+      console.error(err);
+    }
+  });
+</script>
+```
+
 ## Step 3: Create a non-cached endpoint for anonymous users
 
 Implement an endpoint (in WordPress, a companion service, or your app backend) that:
@@ -65,6 +96,13 @@ Implement an endpoint (in WordPress, a companion service, or your app backend) t
 2. Validates that state server-side.
 3. Creates/retrieves the Tipalti onboarding context server-side.
 4. Returns only what the frontend needs to load the iFrame.
+
+
+### WordPress-specific notes
+
+- If you expose this via the WP REST API, explicitly send `Cache-Control: no-store` from the callback.
+- Also send `Vary` headers when behavior depends on request headers/cookies.
+- Treat `DONOTCACHEPAGE` as plugin-local guidance only; enforce bypass at proxy/CDN too.
 
 ### Endpoint hardening checklist
 
